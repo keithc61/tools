@@ -31,8 +31,6 @@ public final class Main {
 			"MSFT", // <br/>
 			"NA.TO", // <br/>
 			"NBD.TO", // <br/>
-			"NRTLQ", // <br/>
-			"ORCL", // <br/>
 			"PPL.TO", // <br/>
 			"PWT.TO", // <br/>
 			"POW.TO", // <br/>
@@ -42,7 +40,6 @@ public final class Main {
 			"SGF.TO", // <br/>
 			"SGL.TO", // <br/>
 			"SLF.TO", // <br/>
-			"SU.TO", // <br/>
 			"SNCR", // <br/>
 			"TTWO", // <br/>
 			"T.TO", // <br/>
