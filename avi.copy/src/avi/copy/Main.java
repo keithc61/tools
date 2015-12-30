@@ -1,12 +1,15 @@
 package avi.copy;
 
-import java.io.Closeable;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.RandomAccessFile;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.channels.ReadableByteChannel;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.text.DateFormat;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
@@ -110,17 +113,16 @@ public class Main {
 
 		@Override
 		public void run() {
-			InputStream in = null;
-			RandomAccessFile out = null;
+			if (destination.exists()) {
+				trouble = "Destination file exists.";
+				return;
+			}
+
+			FileChannel out = null;
 
 			try {
 				bytesCopied = 0;
 				trouble = null;
-
-				if (destination.exists()) {
-					trouble = "Destination file exists.";
-					return;
-				}
 
 				if (DEBUG) {
 					try {
@@ -133,44 +135,53 @@ public class Main {
 
 				destination.getParentFile().mkdirs();
 
-				byte[] buffer;
-				int len;
+				FileReader in = new FileReader(source.toPath());
 
-				out = new RandomAccessFile(destination, "rw");
-				in = new FileInputStream(source);
-				out.setLength(length);
-				buffer = new byte[0x4000];
+				out = FileChannel.open(destination.toPath(),
+						StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+				out.truncate(length);
 
 				for (;;) {
 					if (waitUnpaused() == S_ABORTED) {
+						in.abort();
 						break;
 					}
 
-					len = in.read(buffer);
+					ByteBuffer buffer = in.read();
 
-					if (len < 0) {
+					if (buffer == null) {
 						break;
 					}
 
 					if (waitUnpaused() == S_ABORTED) {
+						in.abort();
 						break;
 					}
 
-					out.write(buffer, 0, len);
-					bytesCopied += len;
+					long bytesRead = buffer.remaining();
+
+					out.write(buffer);
+					bytesCopied += bytesRead;
 				}
 			} catch (IOException e) {
 				trouble = e.getLocalizedMessage();
 			} finally {
-				safeClose(in);
-				if (out != null && state == S_ABORTED) {
+				if (out != null) {
+					if (state == S_ABORTED) {
+						try {
+							out.truncate(0);
+						} catch (IOException e) {
+							// ignore - we're about to delete the file
+						}
+					}
+
 					try {
-						out.setLength(0);
+						out.close();
 					} catch (IOException e) {
-						// ignore - we're about to delete the file
+						trouble = e.getLocalizedMessage();
 					}
 				}
-				safeClose(out);
+
 				bytesCopied = length;
 
 				if (state != S_ABORTED) {
@@ -203,6 +214,115 @@ public class Main {
 			}
 
 			return state;
+		}
+	}
+
+	private static final class FileReader extends Thread {
+
+		private static ByteBuffer[] makeBuffers(int count, int bufferSize) {
+			ByteBuffer[] buffers = new ByteBuffer[count];
+
+			for (int i = 0; i < count; ++i) {
+				buffers[i] = ByteBuffer.allocateDirect(bufferSize);
+			}
+
+			return buffers;
+		}
+
+		private ByteBuffer buffer;
+
+		private boolean done;
+
+		private final Path source;
+
+		private IOException trouble;
+
+		FileReader(Path source) {
+			super("read");
+			this.source = source;
+
+			setDaemon(true);
+			start();
+		}
+
+		synchronized void abort() {
+			done = true;
+			notifyAll();
+		}
+
+		synchronized ByteBuffer read() throws IOException {
+			for (;;) {
+				if (trouble != null) {
+					throw trouble;
+				}
+
+				if (done) {
+					return null;
+				}
+
+				ByteBuffer result = buffer;
+
+				if (result != null) {
+					// advise the reading thread to switch buffers
+					buffer = null;
+					notifyAll();
+					return result;
+				}
+
+				try {
+					wait();
+				} catch (InterruptedException e) {
+					// ignore
+				}
+			}
+		}
+
+		@Override
+		public void run() {
+			try (ReadableByteChannel channel = FileChannel.open(source, StandardOpenOption.READ)) {
+				ByteBuffer[] buffers = makeBuffers(2, 1024 * 1024);
+
+				run: for (int i = 0;; i ^= 1) {
+					// wait for peer to consume buffer
+					synchronized (this) {
+						for (;;) {
+							if (done) {
+								break run;
+							}
+
+							if (buffer == null) {
+								break;
+							}
+
+							try {
+								wait();
+							} catch (InterruptedException e) {
+								// ignore
+							}
+						}
+					}
+
+					ByteBuffer current = buffers[i];
+
+					current.clear();
+
+					int byteCount = channel.read(current);
+
+					synchronized (this) {
+						if (byteCount >= 0) {
+							current.flip();
+							buffer = current;
+						} else {
+							done = true;
+						}
+
+						notifyAll();
+					}
+				}
+			} catch (IOException e) {
+				trouble = e;
+				notifyAll();
+			}
 		}
 	}
 
@@ -295,16 +415,6 @@ public class Main {
 		field.setLayoutData(new GridData(SWT.FILL, SWT.UP, true, false));
 
 		return field;
-	}
-
-	/*private*/static void safeClose(Closeable stream) {
-		if (stream != null) {
-			try {
-				stream.close();
-			} catch (IOException e) {
-				// ignore
-			}
-		}
 	}
 
 	private Document controlData;
@@ -583,13 +693,9 @@ public class Main {
 	}
 
 	private void readControlData(File file) throws IOException {
-		InputStream in = null;
-
 		controlData = null;
 
-		try {
-			in = new FileInputStream(file);
-
+		try (InputStream in = new FileInputStream(file)) {
 			controlData = DocumentBuilderFactory // <br/>
 					.newInstance() // <br/>
 					.newDocumentBuilder() // <br/>
@@ -598,8 +704,6 @@ public class Main {
 			throw new IOException(e);
 		} catch (SAXException e) {
 			throw new IOException(e);
-		} finally {
-			safeClose(in);
 		}
 
 		if (controlData == null) {
