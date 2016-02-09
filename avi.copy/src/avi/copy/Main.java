@@ -31,9 +31,6 @@ import javax.xml.transform.dom.DOMSource;
 import javax.xml.transform.stream.StreamResult;
 
 import org.eclipse.swt.SWT;
-import org.eclipse.swt.events.DisposeEvent;
-import org.eclipse.swt.events.DisposeListener;
-import org.eclipse.swt.events.ModifyEvent;
 import org.eclipse.swt.events.ModifyListener;
 import org.eclipse.swt.events.SelectionAdapter;
 import org.eclipse.swt.events.SelectionEvent;
@@ -46,7 +43,6 @@ import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.Event;
 import org.eclipse.swt.widgets.Group;
 import org.eclipse.swt.widgets.Label;
-import org.eclipse.swt.widgets.Listener;
 import org.eclipse.swt.widgets.ProgressBar;
 import org.eclipse.swt.widgets.Shell;
 import org.eclipse.swt.widgets.Text;
@@ -237,7 +233,7 @@ public class Main {
 
 		private IOException trouble;
 
-		FileReader(Path source) {
+		public FileReader(Path source) {
 			super("read");
 			this.source = source;
 
@@ -245,12 +241,12 @@ public class Main {
 			start();
 		}
 
-		synchronized void abort() {
+		public synchronized void abort() {
 			done = true;
 			notifyAll();
 		}
 
-		synchronized ByteBuffer read() throws IOException {
+		public synchronized ByteBuffer read() throws IOException {
 			for (;;) {
 				if (trouble != null) {
 					throw trouble;
@@ -392,7 +388,7 @@ public class Main {
 	private static Label newLabel(Composite parent, String text) {
 		Label label;
 
-		label = new Label(parent, 16384);
+		label = new Label(parent, SWT.LEAD);
 		label.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, false, false));
 		label.setText(text);
 
@@ -402,19 +398,36 @@ public class Main {
 	private static ProgressBar newProgressBar(Composite parent) {
 		ProgressBar bar;
 
-		bar = new ProgressBar(parent, 65792);
+		bar = new ProgressBar(parent, SWT.HORIZONTAL + SWT.SMOOTH);
 		bar.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true));
 
 		return bar;
 	}
 
+	private static SelectionAdapter newSelectionAdapter(Runnable action) {
+		return new SelectionAdapter() {
+			@Override
+			public void widgetSelected(SelectionEvent event) {
+				action.run();
+			}
+		};
+	}
+
 	private static Text newText(Composite parent) {
 		Text field;
 
-		field = new Text(parent, 18432);
+		field = new Text(parent, SWT.BORDER + SWT.LEAD);
 		field.setLayoutData(new GridData(SWT.FILL, SWT.UP, true, false));
 
 		return field;
+	}
+
+	private static void rescaleProgressBar(Event event) {
+		ProgressBar bar = (ProgressBar) event.widget;
+		Point size = bar.getSize();
+
+		bar.setMinimum(0);
+		bar.setMaximum(size.x);
 	}
 
 	private Document controlData;
@@ -460,17 +473,8 @@ public class Main {
 		this.workToDo = new ArrayList<>();
 	}
 
-	private void armUpdater(Runnable updater) {
-		if (updater == null) {
-			updater = new Runnable() {
-				@Override
-				public void run() {
-					updateUI(this);
-				}
-			};
-		}
-
-		shell.getDisplay().timerExec(100, updater);
+	private void armUpdater() {
+		shell.getDisplay().timerExec(100, () -> updateUI());
 	}
 
 	private String computeWork() {
@@ -538,7 +542,7 @@ public class Main {
 		return null;
 	}
 
-	/*private*/void copyPressed() {
+	private void copyPressed() {
 		boolean wasPaused = paused;
 
 		copyButton.setEnabled(false);
@@ -556,7 +560,7 @@ public class Main {
 			}
 
 			startNextFile();
-			armUpdater(null);
+			armUpdater();
 		}
 	}
 
@@ -571,12 +575,7 @@ public class Main {
 			group.setLayoutData(new GridData(SWT.FILL, SWT.UP, true, false));
 			group.setText("Configuration");
 
-			ModifyListener settingsListener = new ModifyListener() {
-				@Override
-				public void modifyText(ModifyEvent e) {
-					settingsModified();
-				}
-			};
+			ModifyListener settingsListener = event -> updateStatus();
 
 			newLabel(group, "Source:");
 			sourceFolder = newText(group);
@@ -599,39 +598,19 @@ public class Main {
 			buttons.setLayoutData(new GridData(SWT.CENTER, SWT.UP, false, false));
 
 			copyButton = newButton(buttons, "Copy");
-			copyButton.addSelectionListener(new SelectionAdapter() {
-				@Override
-				public void widgetSelected(SelectionEvent e) {
-					copyPressed();
-				}
-			});
+			copyButton.addSelectionListener(newSelectionAdapter(() -> copyPressed()));
 			copyButton.setEnabled(false);
 
 			pauseButton = newButton(buttons, "Pause");
-			pauseButton.addSelectionListener(new SelectionAdapter() {
-				@Override
-				public void widgetSelected(SelectionEvent e) {
-					pausePressed();
-				}
-			});
+			pauseButton.addSelectionListener(newSelectionAdapter(() -> pausePressed()));
 			pauseButton.setEnabled(false);
 
 			skipButton = newButton(buttons, "Skip file");
-			skipButton.addSelectionListener(new SelectionAdapter() {
-				@Override
-				public void widgetSelected(SelectionEvent e) {
-					skipPressed();
-				}
-			});
+			skipButton.addSelectionListener(newSelectionAdapter(() -> skipPressed()));
 			skipButton.setEnabled(false);
 
 			exitButton = newButton(buttons, "Exit");
-			exitButton.addSelectionListener(new SelectionAdapter() {
-				@Override
-				public void widgetSelected(SelectionEvent e) {
-					exitPressed();
-				}
-			});
+			exitButton.addSelectionListener(newSelectionAdapter(() -> shell.dispose()));
 			exitButton.setEnabled(true);
 		}
 
@@ -648,16 +627,7 @@ public class Main {
 			group.setVisible(false);
 
 			progressBar = newProgressBar(group);
-			progressBar.addListener(SWT.Resize, new Listener() {
-				@Override
-				public void handleEvent(Event event) {
-					ProgressBar bar = (ProgressBar) event.widget;
-					Point size = bar.getSize();
-
-					bar.setMinimum(0);
-					bar.setMaximum(size.x);
-				}
-			});
+			progressBar.addListener(SWT.Resize, event -> rescaleProgressBar(event));
 
 			progressGroup = group;
 		}
@@ -673,17 +643,13 @@ public class Main {
 		}
 	}
 
-	/*private*/void exitPressed() {
-		shell.dispose();
-	}
-
-	/*private*/void handleDispose() {
+	private void handleDispose() {
 		if (copier != null) {
 			copier.abort();
 		}
 	}
 
-	/*private*/void pausePressed() {
+	private void pausePressed() {
 		copier.pause();
 		copyButton.setEnabled(true);
 		exitButton.setEnabled(false);
@@ -700,9 +666,7 @@ public class Main {
 					.newInstance() // <br/>
 					.newDocumentBuilder() // <br/>
 					.parse(in);
-		} catch (ParserConfigurationException e) {
-			throw new IOException(e);
-		} catch (SAXException e) {
+		} catch (ParserConfigurationException | SAXException e) {
 			throw new IOException(e);
 		}
 
@@ -761,13 +725,7 @@ public class Main {
 
 		updateStatus();
 
-		shell.addDisposeListener(new DisposeListener() {
-			@Override
-			public void widgetDisposed(DisposeEvent e) {
-				handleDispose();
-			}
-		});
-
+		shell.addDisposeListener(event -> handleDispose());
 		shell.setText("Video Copier");
 		shell.pack();
 		shell.setMinimumSize(shell.getSize());
@@ -846,11 +804,7 @@ public class Main {
 		}
 	}
 
-	/*private*/void settingsModified() {
-		updateStatus();
-	}
-
-	/*private*/void skipPressed() {
+	private void skipPressed() {
 		if (copier != null) {
 			copier.abort();
 		}
@@ -925,7 +879,7 @@ public class Main {
 		statusLabel.setText(status);
 	}
 
-	/*private*/void updateUI(Runnable updater) {
+	private void updateUI() {
 		if (shell.isDisposed()) {
 			return;
 		}
@@ -989,6 +943,6 @@ public class Main {
 		int current = (int) ((bytesCopied / (double) totalBytes) * max);
 
 		progressBar.setSelection(current);
-		armUpdater(updater);
+		armUpdater();
 	}
 }
