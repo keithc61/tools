@@ -363,7 +363,7 @@ public class Main {
 
 	private static final DateFormat DATE = new SimpleDateFormat("yyyyMMddHHmm");
 
-	private static final Pattern Extensions = Pattern.compile(".*\\.(avi|mkv|mov|mp4|mpg)", Pattern.CASE_INSENSITIVE);
+	private static final Pattern Extensions = Pattern.compile(".*\\.(avi|mp4|mpg)", Pattern.CASE_INSENSITIVE);
 
 	private static final Pattern Mnemonics = Pattern.compile("&");
 
@@ -720,7 +720,7 @@ public class Main {
 		createControls(shell);
 
 		controlFile.setText(args.length > 0 ? args[0] : "D:/video/Meghan.xml");
-		destinationFolder.setText(args.length > 1 ? args[1] : "E:/video");
+		destinationFolder.setText(args.length > 1 ? args[1] : "F:/video");
 		sourceFolder.setText(args.length > 2 ? args[2] : "D:/video");
 
 		updateStatus();
