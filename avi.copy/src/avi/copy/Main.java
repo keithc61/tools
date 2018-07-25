@@ -24,6 +24,7 @@ import java.util.regex.Pattern;
 
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
+import javax.xml.transform.OutputKeys;
 import javax.xml.transform.Transformer;
 import javax.xml.transform.TransformerException;
 import javax.xml.transform.TransformerFactory;
@@ -778,29 +779,19 @@ public class Main {
 			}
 		}
 
-		FileWriter writer = new FileWriter(file);
+		try (FileWriter writer = new FileWriter(file)) {
+			Transformer transformer = TransformerFactory.newInstance().newTransformer();
 
-		try {
-			DOMSource source;
-			StreamResult target;
-			Transformer transformer;
+			transformer.setOutputProperty(OutputKeys.ENCODING, "UTF-8");
+			transformer.setOutputProperty(OutputKeys.METHOD, "xml");
+			transformer.setOutputProperty(OutputKeys.OMIT_XML_DECLARATION, "yes");
 
-			transformer = TransformerFactory.newInstance().newTransformer();
-			transformer.setOutputProperty("encoding", "utf-8");
-			transformer.setOutputProperty("indent", "yes");
-			transformer.setOutputProperty("method", "xml");
-
-			source = new DOMSource(controlData);
-
-			target = new StreamResult(file);
-
-			target.setWriter(writer);
+			DOMSource source = new DOMSource(controlData);
+			StreamResult target = new StreamResult(writer);
 
 			transformer.transform(source, target);
 		} catch (TransformerException e) {
 			throw new IOException(e);
-		} finally {
-			writer.close();
 		}
 	}
 
@@ -945,4 +936,5 @@ public class Main {
 		progressBar.setSelection(current);
 		armUpdater();
 	}
+
 }
