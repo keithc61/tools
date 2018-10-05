@@ -1,4 +1,5 @@
 Manifest-Version: 1.0
+Automatic-Module-Name: avi.copy
 Bundle-ManifestVersion: 2
 Bundle-Name: AVI Copier
 Bundle-RequiredExecutionEnvironment: JavaSE-1.8
