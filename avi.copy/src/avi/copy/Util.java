@@ -8,22 +8,20 @@ public final class Util {
 
 	public static String format(long amount) {
 		NumberFormat format = NumberFormat.getInstance();
-
-		if (0 <= amount && amount < 1024) {
-			return format.format(amount);
-		}
-
 		double value;
 
 		if (amount < 0) {
 			value = (amount >>> 1) * 2.0 + (amount & 1);
+		} else if (amount < 1024) {
+			return format.format(amount);
 		} else {
 			value = amount;
 		}
 
+		format.setMaximumFractionDigits(2);
+
 		for (int index = 0;; ++index) {
 			if ((value /= 1024) < 1024) {
-				format.setMaximumFractionDigits(2);
 
 				return format.format(value) + "kMGTPE".charAt(index); //$NON-NLS-1$
 			}
@@ -45,9 +43,7 @@ public final class Util {
 
 			if (v.compareTo(s) < 0) {
 				if (index == 0) {
-					NumberFormat format = NumberFormat.getInstance();
-
-					return format.format(v);
+					return NumberFormat.getInstance().format(v);
 				}
 
 				v = v.divide(s.divide(k), new MathContext(5));
